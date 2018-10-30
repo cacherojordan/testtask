@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Tests\App\TestCases\MailChimp;
 
 use App\Database\Entities\MailChimp\MailChimpList;
+use App\Database\Entities\MailChimp\MailChimpMember;
 use Illuminate\Http\JsonResponse;
 use Mailchimp\Mailchimp;
 use Mockery;
@@ -18,6 +19,11 @@ abstract class ListTestCase extends WithDatabaseTestCase
      * @var array
      */
     protected $createdListIds = [];
+
+    /**
+     * @var array
+     */
+    protected $createdMemberEmails = [];
 
     /**
      * @var array
@@ -46,6 +52,14 @@ abstract class ListTestCase extends WithDatabaseTestCase
         'use_archive_bar' => false,
         'notify_on_subscribe' => 'notify@loyaltycorp.com.au',
         'notify_on_unsubscribe' => 'notify@loyaltycorp.com.au'
+    ];
+
+    /**
+     * @var array
+     */
+    protected static $memberData = [
+        'email_address' => 'jrdncchr8233222@gmail.com',
+        'status' => 'pending'
     ];
 
     /**
@@ -93,6 +107,22 @@ abstract class ListTestCase extends WithDatabaseTestCase
     }
 
     /**
+     * Asserts error response when member not found.
+     *
+     * @param string $memberId
+     *
+     * @return void
+     */
+    protected function assertMemberNotFoundResponse(string $memberId): void
+    {
+        $content = \json_decode($this->response->content(), true);
+
+        $this->assertResponseStatus(404);
+        self::assertArrayHasKey('message', $content);
+        self::assertEquals(\sprintf('MailChimpList[%s] not found', $memberId), $content['message']);
+    }
+
+    /**
      * Asserts error response when MailChimp exception is thrown.
      *
      * @param \Illuminate\Http\JsonResponse $response
@@ -109,6 +139,28 @@ abstract class ListTestCase extends WithDatabaseTestCase
     }
 
     /**
+     * Create MailChimp list into database with existing mail chimp id.
+     *
+     * @param array $data
+     *
+     * @return \App\Database\Entities\MailChimp\MailChimpList
+     */
+    protected function createListForMembersTesting(array $data): MailChimpList
+    {
+        $mailChimp = $this->app->make(Mailchimp::class);
+        $list = new MailChimpList($data);
+
+        $response = $mailChimp->post('lists', $list->toMailChimpArray());
+
+        // Set MailChimp id on the list and save list into db
+        $this->entityManager->persist($list->setMailChimpId($response->get('id')));
+        $this->entityManager->flush();
+
+        $this->createdListIds[] = $response->get('id');
+        return $list;
+    }
+
+    /**
      * Create MailChimp list into database.
      *
      * @param array $data
@@ -117,12 +169,31 @@ abstract class ListTestCase extends WithDatabaseTestCase
      */
     protected function createList(array $data): MailChimpList
     {
+        
         $list = new MailChimpList($data);
 
         $this->entityManager->persist($list);
         $this->entityManager->flush();
 
         return $list;
+    }
+
+    /**
+     * Create MailChimp list into database.
+     *
+     * @param array $data
+     *
+     * @return \App\Database\Entities\MailChimp\MailChimpList
+     */
+    protected function createMember(array $data, string $listId): MailChimpMember
+    {
+        $member = new MailChimpMember($data);
+        $member = $member->setListId($listId);
+
+        $this->entityManager->persist($member);
+        $this->entityManager->flush();
+
+        return $member;
     }
 
     /**
@@ -145,6 +216,32 @@ abstract class ListTestCase extends WithDatabaseTestCase
                 return !empty($method) && (null === $options || \is_array($options));
             })
             ->andThrow(new \Exception(self::MAILCHIMP_EXCEPTION_MESSAGE));
+
+        return $mailChimp;
+    }
+
+    /**
+     * Returns mock of MailChimp to for members
+     *
+     * @param string $method
+     *
+     * @return \Mockery\MockInterface
+     *
+     * @SuppressWarnings(PHPMD.StaticAccess) Mockery requires static access to mock()
+     */
+    protected function mockMailChimpForMemberTesting(string $method): MockInterface
+    {
+        $mailChimp = Mockery::mock(Mailchimp::class);
+
+        switch($method) {
+            case 'post':
+                $member = new MailChimpMember(static::$memberData);
+                $mailChimp
+                    ->shouldReceive($method)
+                    ->once()
+                    ->andReturn('hello');
+                break;
+        }
 
         return $mailChimp;
     }

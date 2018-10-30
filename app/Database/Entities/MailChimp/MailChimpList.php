@@ -284,6 +284,14 @@ class MailChimpList extends MailChimpEntity
     }
 
     /**
+     * Get List Id
+     */
+    public function getListId(): string
+    {
+        return $this->listId;
+    }
+
+    /**
      * Get array representation of entity.
      *
      * @return array

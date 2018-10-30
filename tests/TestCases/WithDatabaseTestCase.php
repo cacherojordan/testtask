@@ -34,7 +34,7 @@ abstract class WithDatabaseTestCase extends TestCase
     public function tearDown(): void
     {
         $this->app->make(Kernel::class)->call('doctrine:schema:drop', ['--force' => true]);
-
         parent::tearDown();
     }
+    
 }
